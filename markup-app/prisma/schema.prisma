@@ -1,0 +1,67 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  shareToken  String    @unique @default(cuid())
+  status      String    @default("draft") // draft | sent | submitted
+  createdAt   DateTime  @default(now())
+  documents   Document[]
+}
+
+model Document {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  originalFilename String
+  kind             String // image | pdf
+  createdAt        DateTime @default(now())
+  pages            Page[]
+}
+
+model Page {
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  pageNumber  Int
+  imagePath   String
+  width       Int
+  height      Int
+  markers     Marker[]
+}
+
+model Marker {
+  id         String            @id @default(cuid())
+  pageId     String
+  page       Page              @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type       String // IE | SECTION | NOTE
+  x          Float
+  y          Float
+  x2         Float? // SECTION's second endpoint (x/y is the first)
+  y2         Float?
+  flipped    Boolean           @default(false) // SECTION: which side the view flags point
+  label      String
+  note       String?
+  createdAt  DateTime          @default(now())
+  directions MarkerDirection[] // IE: 1-4 view-direction angles
+}
+
+model MarkerDirection {
+  id       String @id @default(cuid())
+  markerId String
+  marker   Marker @relation(fields: [markerId], references: [id], onDelete: Cascade)
+  angle    Float // degrees, screen pixel-space atan2 convention (0 = right, 90 = down)
+  order    Int
+}
