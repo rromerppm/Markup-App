@@ -21,9 +21,9 @@ export default async function StaffDashboard() {
           <p className="text-sm text-gray-500 dark:text-gray-400">No projects yet. Create one above.</p>
         )}
         {projects.map((project) => {
-          const markerCount = project.documents
-            .flatMap((d) => d.pages)
-            .flatMap((p) => p.markers).length;
+          const allMarkers = project.documents.flatMap((d) => d.pages).flatMap((p) => p.markers);
+          const markerCount = allMarkers.length;
+          const ieCount = allMarkers.filter((m) => m.type === "IE").length;
           return (
             <div
               key={project.id}
@@ -37,6 +37,7 @@ export default async function StaffDashboard() {
                   <div className="font-medium text-gray-900 dark:text-gray-100">{project.name}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
                     {project.createdAt.toLocaleDateString()} · {markerCount} markers
+                    {project.status === "submitted" && ` · ${ieCount} IE`}
                   </div>
                 </div>
                 <span

@@ -38,15 +38,25 @@ function wrapText(text: string, maxChars: number): string[] {
   return lines;
 }
 
+async function loadImageBytes(imagePath: string): Promise<Buffer> {
+  return imagePath.startsWith("http")
+    ? Buffer.from(await (await fetch(imagePath)).arrayBuffer())
+    : readFile(path.join(process.cwd(), "public", imagePath));
+}
+
 export async function generateProjectPdf(project: ProjectData): Promise<Uint8Array> {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const notesByPage: { pageNumber: number; label: string; note: string }[] = [];
 
-  for (const pageData of project.pages) {
-    const imageBytes = pageData.imagePath.startsWith("http")
-      ? Buffer.from(await (await fetch(pageData.imagePath)).arrayBuffer())
-      : await readFile(path.join(process.cwd(), "public", pageData.imagePath));
+  // Fetching every page's image (often from Blob storage over the network) is
+  // the slow part — doing it for all pages at once instead of one-at-a-time
+  // turns N sequential round trips into 1.
+  const imageBytesByPage = await Promise.all(project.pages.map((p) => loadImageBytes(p.imagePath)));
+
+  for (let pageIndex = 0; pageIndex < project.pages.length; pageIndex++) {
+    const pageData = project.pages[pageIndex];
+    const imageBytes = imageBytesByPage[pageIndex];
     const image = isJpeg(imageBytes)
       ? await pdfDoc.embedJpg(imageBytes)
       : await pdfDoc.embedPng(imageBytes);
@@ -56,32 +66,19 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
 
     const pageHeight = pageData.height;
     const flipY = (y: number) => pageHeight - y;
-    const labelSize = Math.max(9, pageData.width * 0.009);
 
-    function drawLabel(text: string, x: number, y: number) {
-      pdfPage.drawText(text, {
-        x: x + 5,
-        y: flipY(y) - labelSize / 2,
-        size: labelSize,
-        font,
-        color: rgb(0.1, 0.1, 0.1),
-      });
-    }
-
-    function drawSection(m: MarkerData, opacity: number, dashed: boolean) {
+    function drawSection(m: MarkerData) {
       const x1 = m.x * pageData.width;
       const y1 = m.y * pageData.height;
       const x2 = m.x2! * pageData.width;
       const y2 = m.y2! * pageData.height;
       const color = hexToRgb(MARKER_TYPE_INFO.SECTION.color);
-      const flagSize = pageData.width * 0.02;
+      const flagSize = pageData.width * 0.01;
       pdfPage.drawLine({
         start: { x: x1, y: flipY(y1) },
         end: { x: x2, y: flipY(y2) },
         thickness: pageData.width * 0.0022,
         color,
-        opacity,
-        dashArray: dashed ? [pageData.width * 0.012, pageData.width * 0.009] : undefined,
       });
       for (const endpoint of ["start", "end"] as const) {
         const pts = sectionFlagPolygonPoints(x1, y1, x2, y2, endpoint, m.flipped, flagSize);
@@ -89,10 +86,8 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
           x: 0,
           y: pageHeight,
           color,
-          opacity,
           borderColor: rgb(0, 0, 0),
           borderWidth: flagSize * 0.06,
-          borderOpacity: opacity,
         });
       }
       const dotRadius = flagSize * DOT_RADIUS_FACTOR;
@@ -103,13 +98,10 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
           xScale: dotRadius,
           yScale: dotRadius,
           color,
-          opacity,
           borderColor: rgb(0, 0, 0),
           borderWidth: dotRadius * 0.12,
-          borderOpacity: opacity,
         });
       }
-      if (!dashed) drawLabel(m.label, (x1 + x2) / 2, (y1 + y2) / 2);
     }
 
     function drawIE(m: MarkerData) {
@@ -137,13 +129,12 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
         borderColor: black,
         borderWidth: size * DOT_RADIUS_FACTOR * 0.12,
       });
-      drawLabel(m.label, cx, cy - size);
     }
 
     function drawNote(m: MarkerData) {
       const cx = m.x * pageData.width;
       const cy = m.y * pageData.height;
-      const size = pageData.width * 0.012;
+      const size = pageData.width * 0.004;
       pdfPage.drawEllipse({
         x: cx,
         y: flipY(cy),
@@ -151,22 +142,21 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
         yScale: size,
         color: hexToRgb(MARKER_TYPE_INFO.NOTE.color),
         borderColor: rgb(0, 0, 0),
-        borderWidth: size * 0.1,
+        borderWidth: size * 0.12,
       });
-      drawLabel(m.label, cx, cy - size);
     }
 
     if (pageData.kind === "pdf") {
       for (const other of project.pages) {
         if (other.id === pageData.id) continue;
         for (const m of other.markers) {
-          if (m.type === "SECTION" && m.x2 != null && m.y2 != null) drawSection(m, 0.35, true);
+          if (m.type === "SECTION" && m.x2 != null && m.y2 != null) drawSection(m);
         }
       }
     }
 
     for (const m of pageData.markers) {
-      if (m.type === "SECTION" && m.x2 != null && m.y2 != null) drawSection(m, 1, false);
+      if (m.type === "SECTION" && m.x2 != null && m.y2 != null) drawSection(m);
       else if (m.type === "IE") drawIE(m);
       else if (m.type === "NOTE") drawNote(m);
 

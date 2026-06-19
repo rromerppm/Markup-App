@@ -9,7 +9,7 @@ export async function POST(
 ) {
   const { token } = await params;
   const body = await request.json();
-  const { pageId, type, x, y, x2, y2, label, note, directions } = body;
+  const { pageId, type, x, y, x2, y2, label, note, directions, flipped } = body;
 
   if (
     typeof pageId !== "string" ||
@@ -60,6 +60,7 @@ export async function POST(
       y2: type === "SECTION" ? Math.min(1, Math.max(0, y2)) : null,
       label,
       note: typeof note === "string" ? note : null,
+      flipped: type === "SECTION" && flipped === true,
       directions:
         type === "IE"
           ? { create: directions.map((angle: number, order: number) => ({ angle, order })) }

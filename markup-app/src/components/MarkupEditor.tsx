@@ -33,7 +33,7 @@ type Draft = {
 const MIN_SECTION_DRAG_PX = 15;
 const PAN_CLICK_THRESHOLD_PX = 4;
 const ZOOM_MIN = 1;
-const ZOOM_MAX = 3;
+const ZOOM_MAX = 8;
 const ZOOM_STEP = 0.25;
 const DEFAULT_BASE_WIDTH = 900;
 const PAN_HOLD_STEP = 14;
@@ -55,9 +55,7 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-// Friendlier than MARKER_TYPE_INFO's shortLabel ("S") for count displays —
-// shortLabel stays tiny on purpose since it's what renders inside the small
-// on-canvas marker dot, where space is very tight.
+// Friendlier than MARKER_TYPE_INFO's shortLabel ("S") for count displays.
 const COUNT_LABEL: Record<MarkerType, string> = { IE: "IE", SECTION: "Section", NOTE: "Note" };
 
 function emptyCounts(): Record<MarkerType, number> {
@@ -117,7 +115,7 @@ function ToolIcon({ type }: { type: MarkerType }) {
   }
   return (
     <svg viewBox="0 0 40 40" className="h-6 w-6 shrink-0">
-      <circle cx={20} cy={20} r={10} fill={color} />
+      <circle cx={20} cy={20} r={7} fill={color} stroke="black" strokeWidth={0.4} />
     </svg>
   );
 }
@@ -351,8 +349,8 @@ export default function MarkupEditor({
   // Attached to the whole viewport (not just the <img>) so panning/deselect work from the gray padding too.
 
   function handleCanvasPointerDown(e: React.PointerEvent) {
-    if (locked || !activePage) return;
-    if (selectedTool) {
+    if (!activePage) return;
+    if (!locked && selectedTool) {
       handleStartDraft(e);
       return;
     }
@@ -609,6 +607,47 @@ export default function MarkupEditor({
     }
   }
 
+  async function handleDuplicateMarker(markerId: string) {
+    const marker = findMarker(markerId);
+    const ownerPage = pages.find((p) => p.markers.some((mk) => mk.id === markerId));
+    if (!marker || !ownerPage) return;
+
+    const OFFSET = 0.02;
+    const offset = (v: number) => Math.min(1, v + OFFSET);
+    const label = `${MARKER_TYPE_INFO[marker.type].label} ${
+      ownerPage.markers.filter((m) => m.type === marker.type).length + 1
+    }`;
+
+    const body: Record<string, unknown> = {
+      pageId: ownerPage.id,
+      type: marker.type,
+      x: offset(marker.x),
+      y: offset(marker.y),
+      label,
+      note: marker.note ?? undefined,
+    };
+    if (marker.type === "IE") body.directions = marker.directions;
+    if (marker.type === "SECTION") {
+      body.x2 = offset(marker.x2 ?? marker.x);
+      body.y2 = offset(marker.y2 ?? marker.y);
+      body.flipped = marker.flipped;
+    }
+
+    try {
+      const res = await fetch(`/api/markup/${token}/markers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to duplicate marker");
+      const newMarker: MarkerData = await res.json();
+      updatePageMarkers(ownerPage.id, (markers) => [...markers, newMarker]);
+      setSelectedMarkerId(newMarker.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to duplicate marker");
+    }
+  }
+
   async function handleNoteChange(markerId: string, note: string) {
     updateMarkerById(markerId, (m) => ({ ...m, note }));
     await patchMarker(markerId, { note });
@@ -813,6 +852,11 @@ export default function MarkupEditor({
   // as a separate read-only "ghost" layer.
   const renderableMarkers = activePage ? [...activePage.markers, ...ghostSections] : [];
 
+  // One shared outline weight for every marker part (IE arrows/dot, section
+  // flags/dots, Note dot) so the line stays equally thin everywhere instead
+  // of scaling with each marker type's own (very different) size.
+  const outlineWidth = (activePage?.width ?? 0) * 0.0005;
+
   const canvasArea = activePage && (
     <div className="relative h-full w-full">
       <div
@@ -849,7 +893,11 @@ export default function MarkupEditor({
                 const y1 = m.y * activePage.height;
                 const x2 = m.x2 * activePage.width;
                 const y2 = m.y2 * activePage.height;
-                const flagSize = activePage.width * 0.02;
+                const flagSize = activePage.width * 0.01;
+                const lineRad = Math.atan2(y2 - y1, x2 - x1);
+                const viewDeg = ((lineRad + (Math.PI / 2) * (m.flipped ? -1 : 1)) * 180) / Math.PI;
+                const flipHandlePos = arrowTipPoint((x1 + x2) / 2, (y1 + y2) / 2, viewDeg, flagSize * 2.2);
+                const flipHandleR = Math.max(flagSize * 0.5, 5);
                 return (
                   <g key={m.id}>
                     <line
@@ -877,27 +925,17 @@ export default function MarkupEditor({
                       points={toSvgPoints(sectionFlagPolygonPoints(x1, y1, x2, y2, "start", m.flipped, flagSize))}
                       fill={MARKER_TYPE_INFO.SECTION.color}
                       stroke="black"
-                      strokeWidth={flagSize * 0.06}
+                      strokeWidth={outlineWidth}
                       strokeLinejoin="round"
-                      style={{ pointerEvents: locked ? "none" : "auto", cursor: "pointer" }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleFlip(m.id);
-                      }}
+                      style={{ pointerEvents: "none" }}
                     />
                     <polygon
                       points={toSvgPoints(sectionFlagPolygonPoints(x1, y1, x2, y2, "end", m.flipped, flagSize))}
                       fill={MARKER_TYPE_INFO.SECTION.color}
                       stroke="black"
-                      strokeWidth={flagSize * 0.06}
+                      strokeWidth={outlineWidth}
                       strokeLinejoin="round"
-                      style={{ pointerEvents: locked ? "none" : "auto", cursor: "pointer" }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleToggleFlip(m.id);
-                      }}
+                      style={{ pointerEvents: "none" }}
                     />
                     {[
                       { x: x1, y: y1, field: "primary" as const },
@@ -907,7 +945,7 @@ export default function MarkupEditor({
                       return (
                         <g key={field}>
                           {selectedMarkerId === m.id && (
-                            <circle cx={x} cy={y} r={r * 1.5} fill="none" stroke="black" strokeWidth={r * 0.08} />
+                            <circle cx={x} cy={y} r={r * 1.5} fill="none" stroke="black" strokeWidth={outlineWidth} />
                           )}
                           <circle
                             cx={x}
@@ -915,7 +953,7 @@ export default function MarkupEditor({
                             r={r}
                             fill={MARKER_TYPE_INFO.SECTION.color}
                             stroke="black"
-                            strokeWidth={r * 0.12}
+                            strokeWidth={outlineWidth}
                             style={{ pointerEvents: locked ? "none" : "auto", cursor: locked ? undefined : "move" }}
                             onPointerDown={(e) => handlePointPointerDown(e, m.id, field)}
                             onPointerMove={handleDragMove}
@@ -926,6 +964,36 @@ export default function MarkupEditor({
                         </g>
                       );
                     })}
+                    {!locked && selectedMarkerId === m.id && (
+                      <g
+                        style={{ pointerEvents: "auto", cursor: "pointer" }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleFlip(m.id);
+                        }}
+                      >
+                        <circle
+                          cx={flipHandlePos.x}
+                          cy={flipHandlePos.y}
+                          r={flipHandleR}
+                          fill={MARKER_TYPE_INFO.SECTION.color}
+                          stroke="black"
+                          strokeWidth={outlineWidth}
+                        />
+                        <text
+                          x={flipHandlePos.x}
+                          y={flipHandlePos.y}
+                          fontSize={flipHandleR * 1.3}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fill="white"
+                          style={{ pointerEvents: "none" }}
+                        >
+                          ⇄
+                        </text>
+                      </g>
+                    )}
                   </g>
                 );
               }
@@ -942,13 +1010,13 @@ export default function MarkupEditor({
                         points={toSvgPoints(arrowWedgePoints(cx, cy, angle, size))}
                         fill={MARKER_TYPE_INFO.IE.color}
                         stroke="black"
-                        strokeWidth={size * 0.06}
+                        strokeWidth={outlineWidth}
                         strokeLinejoin="round"
                         style={{ pointerEvents: "none" }}
                       />
                     ))}
                     {selectedMarkerId === m.id && (
-                      <circle cx={cx} cy={cy} r={dotR * 1.5} fill="none" stroke="black" strokeWidth={dotR * 0.08} />
+                      <circle cx={cx} cy={cy} r={dotR * 1.5} fill="none" stroke="black" strokeWidth={outlineWidth} />
                     )}
                     <circle
                       cx={cx}
@@ -956,7 +1024,7 @@ export default function MarkupEditor({
                       r={dotR}
                       fill={MARKER_TYPE_INFO.IE.color}
                       stroke="black"
-                      strokeWidth={dotR * 0.12}
+                      strokeWidth={outlineWidth}
                       style={{ pointerEvents: locked ? "none" : "auto", cursor: locked ? undefined : "move" }}
                       onPointerDown={(e) => handlePointPointerDown(e, m.id, "primary")}
                       onPointerMove={handleDragMove}
@@ -987,7 +1055,7 @@ export default function MarkupEditor({
                               r={r}
                               fill={MARKER_TYPE_INFO.IE.color}
                               stroke="black"
-                              strokeWidth={size * 0.06}
+                              strokeWidth={outlineWidth}
                             />
                             <text
                               x={handlePos.x}
@@ -1006,6 +1074,32 @@ export default function MarkupEditor({
                   </g>
                 );
               }
+              if (m.type === "NOTE") {
+                const cx = m.x * activePage.width;
+                const cy = m.y * activePage.height;
+                const r = activePage.width * 0.004;
+                return (
+                  <g key={m.id}>
+                    {selectedMarkerId === m.id && (
+                      <circle cx={cx} cy={cy} r={r * 1.5} fill="none" stroke="black" strokeWidth={outlineWidth} />
+                    )}
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={r}
+                      fill={MARKER_TYPE_INFO.NOTE.color}
+                      stroke="black"
+                      strokeWidth={outlineWidth}
+                      style={{ pointerEvents: locked ? "none" : "auto", cursor: locked ? undefined : "move" }}
+                      onPointerDown={(e) => handlePointPointerDown(e, m.id, "primary")}
+                      onPointerMove={handleDragMove}
+                      onPointerUp={handleDragEnd}
+                    >
+                      <title>{m.label}</title>
+                    </circle>
+                  </g>
+                );
+              }
               return null;
             })}
 
@@ -1021,29 +1115,6 @@ export default function MarkupEditor({
               />
             )}
           </svg>
-
-          {renderableMarkers
-            .filter((m) => m.type === "NOTE")
-            .map((m) => (
-              <div
-                key={m.id}
-                onPointerDown={(e) => handlePointPointerDown(e, m.id, "primary")}
-                onPointerMove={handleDragMove}
-                onPointerUp={handleDragEnd}
-                style={{
-                  left: `${m.x * 100}%`,
-                  top: `${m.y * 100}%`,
-                  background: MARKER_TYPE_INFO[m.type].color,
-                  transform: "translate(-50%, -50%)",
-                }}
-                title={m.label}
-                className={`absolute flex h-7 w-7 touch-none items-center justify-center rounded-full border-2 border-black text-xs font-bold text-white shadow ${
-                  locked ? "" : "cursor-move"
-                } ${selectedMarkerId === m.id ? "ring-2 ring-black ring-offset-1 dark:ring-gray-300" : ""}`}
-              >
-                {MARKER_TYPE_INFO[m.type].shortLabel}
-              </div>
-            ))}
         </div>
       </div>
       {zoomWidget}
@@ -1159,14 +1230,22 @@ export default function MarkupEditor({
 
   const selectedMarkerPanel = selectedMarker && !locked && (
     <div className="rounded-md border bg-white p-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800">
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-2 flex items-center justify-between gap-2">
         <span className="font-semibold text-gray-900 dark:text-gray-100">{selectedMarker.label}</span>
-        <button
-          onClick={() => handleDeleteMarker(selectedMarker.id)}
-          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
-        >
-          Delete marker
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            onClick={() => handleDuplicateMarker(selectedMarker.id)}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
+          >
+            Duplicate
+          </button>
+          <button
+            onClick={() => handleDeleteMarker(selectedMarker.id)}
+            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-gray-700"
+          >
+            Delete marker
+          </button>
+        </div>
       </div>
 
       {selectedMarker.type === "IE" && (

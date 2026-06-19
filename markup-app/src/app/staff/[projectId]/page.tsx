@@ -7,6 +7,7 @@ import MarkupEditor from "@/components/MarkupEditor";
 import DeleteProjectButton from "@/components/DeleteProjectButton";
 import ReopenProjectButton from "@/components/ReopenProjectButton";
 import RequestedMarkerTypes from "@/components/RequestedMarkerTypes";
+import CopyLinkButton from "@/components/CopyLinkButton";
 
 export default async function StaffProjectPage({
   params,
@@ -39,11 +40,12 @@ export default async function StaffProjectPage({
       >
         ← Back to dashboard
       </Link>
-      <p className="text-xs break-all text-gray-600 dark:text-gray-400">
+      <p className="flex flex-wrap items-center gap-2 text-xs break-all text-gray-600 dark:text-gray-400">
         Client link:{" "}
         <a href={shareUrl} className="font-medium text-blue-600 underline dark:text-blue-400">
           {shareUrl}
         </a>
+        <CopyLinkButton url={shareUrl} />
       </p>
       <div className="flex flex-wrap items-center gap-2">
         {project.status === "submitted" && (
