@@ -91,7 +91,7 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
           color,
           opacity,
           borderColor: rgb(0, 0, 0),
-          borderWidth: flagSize * 0.08,
+          borderWidth: flagSize * 0.06,
           borderOpacity: opacity,
         });
       }
@@ -105,7 +105,7 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
           color,
           opacity,
           borderColor: rgb(0, 0, 0),
-          borderWidth: dotRadius * 0.25,
+          borderWidth: dotRadius * 0.12,
           borderOpacity: opacity,
         });
       }
@@ -125,7 +125,7 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
           y: pageHeight,
           color,
           borderColor: black,
-          borderWidth: size * 0.08,
+          borderWidth: size * 0.06,
         });
       }
       pdfPage.drawEllipse({
@@ -135,7 +135,7 @@ export async function generateProjectPdf(project: ProjectData): Promise<Uint8Arr
         yScale: size * DOT_RADIUS_FACTOR,
         color,
         borderColor: black,
-        borderWidth: size * 0.1,
+        borderWidth: size * DOT_RADIUS_FACTOR * 0.12,
       });
       drawLabel(m.label, cx, cy - size);
     }

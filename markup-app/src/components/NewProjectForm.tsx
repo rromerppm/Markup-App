@@ -8,7 +8,19 @@ function isPdfFile(file: File) {
   return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 }
 
-export default function NewProjectForm() {
+type PreparedPage = { blob: Blob; width: number; height: number };
+
+async function prepareImagePages(files: File[]): Promise<PreparedPage[]> {
+  const dims = await Promise.all(files.map(loadImageDimensions));
+  return files.map((file, i) => ({ blob: file, width: dims[i].width, height: dims[i].height }));
+}
+
+async function cleanupUploadedBlobs(urls: string[]) {
+  if (urls.length === 0) return;
+  await fetch("/api/blob-upload", { method: "DELETE", body: JSON.stringify({ urls }) }).catch(() => {});
+}
+
+export default function NewProjectForm({ useBlob }: { useBlob: boolean }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -36,35 +48,68 @@ export default function NewProjectForm() {
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.set("name", name.trim());
-      formData.set("allowIE", String(allowIE));
-      formData.set("allowSection", String(allowSection));
+      const isPdf = files.length === 1 && isPdfFile(files[0]);
+      const kind = isPdf ? "pdf" : "image";
+      const originalFilename = isPdf
+        ? files[0].name
+        : files.length === 1
+          ? files[0].name
+          : `${files.length} images`;
 
-      if (files.length === 1 && isPdfFile(files[0])) {
-        const file = files[0];
-        formData.set("originalFilename", file.name);
-        setProgress("Rendering PDF pages...");
-        const pages = await rasterizePdf(file);
-        formData.set("kind", "pdf");
+      setProgress(isPdf ? "Rendering PDF pages..." : files.length > 1 ? "Reading images..." : "Reading image...");
+      const pages = isPdf ? await rasterizePdf(files[0]) : await prepareImagePages(files);
+
+      let id: string;
+      if (useBlob) {
+        const { upload } = await import("@vercel/blob/client");
+        const uploadedUrls: string[] = [];
+        try {
+          setProgress(pages.length > 1 ? "Uploading pages..." : "Uploading...");
+          const uploaded = [];
+          for (let i = 0; i < pages.length; i++) {
+            const { url } = await upload(`page-${crypto.randomUUID()}-${i}.png`, pages[i].blob, {
+              access: "public",
+              handleUploadUrl: "/api/blob-upload",
+            });
+            uploadedUrls.push(url);
+            uploaded.push({ imagePath: url, width: pages[i].width, height: pages[i].height });
+          }
+
+          setProgress("Creating project...");
+          const res = await fetch("/api/projects", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: name.trim(),
+              kind,
+              originalFilename,
+              allowIE,
+              allowSection,
+              pages: uploaded,
+            }),
+          });
+          if (!res.ok) throw new Error((await res.json()).error ?? "Upload failed");
+          ({ id } = await res.json());
+        } catch (err) {
+          await cleanupUploadedBlobs(uploadedUrls);
+          throw err;
+        }
+      } else {
+        const formData = new FormData();
+        formData.set("name", name.trim());
+        formData.set("allowIE", String(allowIE));
+        formData.set("allowSection", String(allowSection));
+        formData.set("originalFilename", originalFilename);
+        formData.set("kind", kind);
         formData.set("meta", JSON.stringify(pages.map((p) => ({ width: p.width, height: p.height }))));
         pages.forEach((p, i) => formData.set(`file-${i}`, p.blob, `page-${i}.png`));
-      } else {
-        formData.set(
-          "originalFilename",
-          files.length === 1 ? files[0].name : `${files.length} images`
-        );
-        setProgress(files.length > 1 ? "Reading images..." : "Reading image...");
-        const dims = await Promise.all(files.map(loadImageDimensions));
-        formData.set("kind", "image");
-        formData.set("meta", JSON.stringify(dims.map(({ width, height }) => ({ width, height }))));
-        files.forEach((file, i) => formData.set(`file-${i}`, file, file.name));
+
+        setProgress("Uploading...");
+        const res = await fetch("/api/projects", { method: "POST", body: formData });
+        if (!res.ok) throw new Error((await res.json()).error ?? "Upload failed");
+        ({ id } = await res.json());
       }
 
-      setProgress("Uploading...");
-      const res = await fetch("/api/projects", { method: "POST", body: formData });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Upload failed");
-      const { id } = await res.json();
       router.push(`/staff/${id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");

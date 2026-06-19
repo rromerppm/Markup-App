@@ -14,7 +14,7 @@ export default async function StaffDashboard() {
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6 px-6 py-10">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Site Markup Projects</h1>
-      <NewProjectForm />
+      <NewProjectForm useBlob={!!process.env.BLOB_READ_WRITE_TOKEN} />
 
       <div className="flex flex-col gap-2">
         {projects.length === 0 && (

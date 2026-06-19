@@ -87,10 +87,11 @@ function ToolIcon({ type }: { type: MarkerType }) {
             points={toSvgPoints(arrowWedgePoints(20, 20, angle, size))}
             fill={color}
             stroke="black"
-            strokeWidth={0.6}
+            strokeWidth={size * 0.06}
+            strokeLinejoin="round"
           />
         ))}
-        <circle cx={20} cy={20} r={size * DOT_RADIUS_FACTOR} fill={color} stroke="black" strokeWidth={0.6} />
+        <circle cx={20} cy={20} r={size * DOT_RADIUS_FACTOR} fill={color} stroke="black" strokeWidth={size * 0.06} />
       </svg>
     );
   }
@@ -105,11 +106,12 @@ function ToolIcon({ type }: { type: MarkerType }) {
             points={toSvgPoints(sectionFlagPolygonPoints(7, 20, 33, 20, endpoint, false, size))}
             fill={color}
             stroke="black"
-            strokeWidth={0.6}
+            strokeWidth={size * 0.06}
+            strokeLinejoin="round"
           />
         ))}
-        <circle cx={7} cy={20} r={size * DOT_RADIUS_FACTOR} fill={color} stroke="black" strokeWidth={0.6} />
-        <circle cx={33} cy={20} r={size * DOT_RADIUS_FACTOR} fill={color} stroke="black" strokeWidth={0.6} />
+        <circle cx={7} cy={20} r={size * DOT_RADIUS_FACTOR} fill={color} stroke="black" strokeWidth={size * 0.06} />
+        <circle cx={33} cy={20} r={size * DOT_RADIUS_FACTOR} fill={color} stroke="black" strokeWidth={size * 0.06} />
       </svg>
     );
   }
@@ -875,7 +877,8 @@ export default function MarkupEditor({
                       points={toSvgPoints(sectionFlagPolygonPoints(x1, y1, x2, y2, "start", m.flipped, flagSize))}
                       fill={MARKER_TYPE_INFO.SECTION.color}
                       stroke="black"
-                      strokeWidth={flagSize * 0.08}
+                      strokeWidth={flagSize * 0.06}
+                      strokeLinejoin="round"
                       style={{ pointerEvents: locked ? "none" : "auto", cursor: "pointer" }}
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
@@ -887,7 +890,8 @@ export default function MarkupEditor({
                       points={toSvgPoints(sectionFlagPolygonPoints(x1, y1, x2, y2, "end", m.flipped, flagSize))}
                       fill={MARKER_TYPE_INFO.SECTION.color}
                       stroke="black"
-                      strokeWidth={flagSize * 0.08}
+                      strokeWidth={flagSize * 0.06}
+                      strokeLinejoin="round"
                       style={{ pointerEvents: locked ? "none" : "auto", cursor: "pointer" }}
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
@@ -903,7 +907,7 @@ export default function MarkupEditor({
                       return (
                         <g key={field}>
                           {selectedMarkerId === m.id && (
-                            <circle cx={x} cy={y} r={r * 1.5} fill="none" stroke="black" strokeWidth={r * 0.2} />
+                            <circle cx={x} cy={y} r={r * 1.5} fill="none" stroke="black" strokeWidth={r * 0.08} />
                           )}
                           <circle
                             cx={x}
@@ -911,7 +915,7 @@ export default function MarkupEditor({
                             r={r}
                             fill={MARKER_TYPE_INFO.SECTION.color}
                             stroke="black"
-                            strokeWidth={r * 0.3}
+                            strokeWidth={r * 0.12}
                             style={{ pointerEvents: locked ? "none" : "auto", cursor: locked ? undefined : "move" }}
                             onPointerDown={(e) => handlePointPointerDown(e, m.id, field)}
                             onPointerMove={handleDragMove}
@@ -938,12 +942,13 @@ export default function MarkupEditor({
                         points={toSvgPoints(arrowWedgePoints(cx, cy, angle, size))}
                         fill={MARKER_TYPE_INFO.IE.color}
                         stroke="black"
-                        strokeWidth={size * 0.08}
+                        strokeWidth={size * 0.06}
+                        strokeLinejoin="round"
                         style={{ pointerEvents: "none" }}
                       />
                     ))}
                     {selectedMarkerId === m.id && (
-                      <circle cx={cx} cy={cy} r={dotR * 1.5} fill="none" stroke="black" strokeWidth={dotR * 0.2} />
+                      <circle cx={cx} cy={cy} r={dotR * 1.5} fill="none" stroke="black" strokeWidth={dotR * 0.08} />
                     )}
                     <circle
                       cx={cx}
@@ -951,7 +956,7 @@ export default function MarkupEditor({
                       r={dotR}
                       fill={MARKER_TYPE_INFO.IE.color}
                       stroke="black"
-                      strokeWidth={dotR * 0.3}
+                      strokeWidth={dotR * 0.12}
                       style={{ pointerEvents: locked ? "none" : "auto", cursor: locked ? undefined : "move" }}
                       onPointerDown={(e) => handlePointPointerDown(e, m.id, "primary")}
                       onPointerMove={handleDragMove}
@@ -982,7 +987,7 @@ export default function MarkupEditor({
                               r={r}
                               fill={MARKER_TYPE_INFO.IE.color}
                               stroke="black"
-                              strokeWidth={size * 0.15}
+                              strokeWidth={size * 0.06}
                             />
                             <text
                               x={handlePos.x}

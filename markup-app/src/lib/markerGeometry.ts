@@ -38,20 +38,24 @@ export function snapToCommonAngle(
 /** A marker's dot is drawn at `size * DOT_RADIUS_FACTOR` — arrow geometry is built around this same radius so the two always line up. */
 export const DOT_RADIUS_FACTOR = 0.5;
 
+// How much farther out the tip sits versus the minimum (tangent) distance.
+// Only stretches the tip outward — the base corners stay locked to the dot's
+// circle, so this can change freely without breaking the dot connection.
+const ARROW_LENGTH_FACTOR = 1.3;
+
 /**
  * One arrow wedge pointing outward from (cx,cy) along angleDeg. Its two base
  * corners sit exactly on the dot's own circle (radius `size * DOT_RADIUS_FACTOR`),
- * 45° to either side of the arrow's angle — the distance from center to tip
- * is chosen so that line is tangent to the dot there. That 45° offset is what
- * makes this consistent across direction counts: any two directions that are
- * 90° apart (every pair this app ever produces, since directions are only
- * ever added/rotated in 90° steps) share that tangent point exactly, so their
- * wedges meet with no gap or overlap; directions further apart just leave
- * that stretch of the dot's circle showing.
+ * 45° to either side of the arrow's angle. That 45° offset is what makes this
+ * consistent across direction counts: any two directions that are 90° apart
+ * (every pair this app ever produces, since directions are only ever
+ * added/rotated in 90° steps) share that point exactly, so their wedges meet
+ * with no gap or overlap; directions further apart just leave that stretch of
+ * the dot's circle showing.
  */
 export function arrowWedgePoints(cx: number, cy: number, angleDeg: number, size: number): Point[] {
   const r = size * DOT_RADIUS_FACTOR;
-  const tipDistance = r * Math.SQRT2;
+  const tipDistance = r * Math.SQRT2 * ARROW_LENGTH_FACTOR;
   return [
     polarPoint(cx, cy, angleDeg - 45, r),
     polarPoint(cx, cy, angleDeg, tipDistance),
